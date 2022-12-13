@@ -277,8 +277,18 @@ void loop()
     lcd.write(4);
     lcd.setCursor(8, 1);
     lcd.print(":");
-    lcd.setCursor(9, 1);
-    lcd.print(beatsPerMinute);
+    if(irValue < 50000)
+    {
+      lcd.setCursor(9, 1);
+      lcd.print(0);
+      lcd.setCursor(10, 1);
+      lcd.printstr("BPM");
+    }
+    else 
+    {
+      lcd.setCursor(9, 1);
+      lcd.print(beatsPerMinute);
+    }
     if(beatsPerMinute < 10)
     {
       lcd.setCursor(10, 1);
