@@ -5,6 +5,9 @@
 #include <Adafruit_Sensor.h>
 #include <Adafruit_ADXL345_U.h>
 #include <LiquidCrystal_I2C.h>
+#include "DHT.h"
+#define dataPin D4
+#define DHTTYPE DHT11
 #define TCAADDR 0x70
 #define button D5
 
@@ -25,6 +28,10 @@ const char *ssid     = "Thuan";
 const char *password = "0908270035";
 String weekDays[7]={"CN.", "Th2", "Th3", "Th4", "Th5", "Th6", "Th7"};
 String date;
+
+//Init DHT11
+DHT dht(dataPin, DHTTYPE);
+float temp;
 
 byte shoes[] = {
   B00000,
@@ -48,7 +55,7 @@ byte distanceChar[] = {
   B00000
  };
 
- byte loadingNode[] = {
+byte loadingNode[] = {
   B11111,
   B11111,
   B11111,
@@ -57,6 +64,28 @@ byte distanceChar[] = {
   B11111,
   B11111,
   B11111
+ };
+
+byte heat[] = {
+  B00000,
+  B00100,
+  B00100,
+  B01010,
+  B10001,
+  B01010,
+  B00100,
+  B00000
+ };
+
+byte celsiusSymbol[] = {
+  B00000,
+  B01100,
+  B01100,
+  B00000,
+  B00000,
+  B00000,
+  B00000,
+  B00000
  };
 
 void khoiDongLCD()
@@ -77,6 +106,7 @@ void setup()
 {
   Serial.begin(9600);
 
+  //Check WiFi status
   Serial.print("Connecting to ");
   Serial.println(ssid);
   WiFi.begin(ssid, password);
@@ -88,14 +118,13 @@ void setup()
   server.begin();
   timeClient.begin();
 
-  Serial.println("Accelerometer Test"); Serial.println("");
   /* Initialise the sensor with the I2C address */
+  Serial.println("Accelerometer Test"); Serial.println("");
   if(!accel.begin(0x53))
   {
     Serial.println("Ooops, no ADXL345 detected ... Check your wiring!");
     while(1);
   }
-
   /* Set the range to whatever is appropriate for your project */
   accel.setRange(ADXL345_RANGE_16_G);
   
@@ -105,9 +134,15 @@ void setup()
   khoiDongLCD();
   lcd.createChar(0, shoes);
   lcd.createChar(1, distanceChar);
+  lcd.createChar(2, heat);
+  lcd.createChar(3, celsiusSymbol);
   lcd.clear();
-  // set input button
+
+  //set input button
   pinMode(button, INPUT);
+
+  //start DHT11
+  dht.begin();
 }
 
 void mainScreen()
@@ -115,15 +150,25 @@ void mainScreen()
   lcd.setCursor(0,0);
   lcd.write(0);
   lcd.setCursor(1,0);
-  lcd.printstr(":");
+  lcd.print(":");
   lcd.setCursor(2, 0);
   lcd.print(steps);
   lcd.setCursor(0, 1);
   lcd.write(1);
   lcd.setCursor(1, 1);
-  lcd.printstr(":");
+  lcd.print(":");
   lcd.setCursor(2, 1);
   lcd.print(distance);
+  lcd.setCursor(7, 0);
+  lcd.write(2);
+  lcd.setCursor(8, 0);
+  lcd.print(":");
+  lcd.setCursor(9, 0);
+  lcd.print(temp);
+  lcd.setCursor(14, 0);
+  lcd.write(3);
+  lcd.setCursor(15, 0);
+  lcd.print("C");
 }
 
 void subScreen()
@@ -155,6 +200,12 @@ void loop()
     distance = distance + 0.3;
   }
   
+  temp = dht.readTemperature();
+  if (isnan(temp)) 
+  {
+    Serial.println(F("Failed to read from DHT sensor!"));
+  }
+
   if(digitalRead(button) == HIGH)
   {
     choice += 1;
