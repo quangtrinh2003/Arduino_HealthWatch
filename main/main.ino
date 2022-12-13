@@ -6,6 +6,8 @@
 #include <Adafruit_ADXL345_U.h>
 #include <LiquidCrystal_I2C.h>
 #include "DHT.h"
+#include "MAX30105.h"
+#include "heartRate.h"
 #define dataPin D4
 #define DHTTYPE DHT11
 #define TCAADDR 0x70
@@ -32,6 +34,17 @@ String date;
 //Init DHT11
 DHT dht(dataPin, DHTTYPE);
 float temp;
+
+//Init MAX30102
+MAX30105 particleSensor;
+long lastBeat = 0;
+long irValue = 0;
+int beatsPerMinute;
+
+//Delay using minus operation, not delay to achieve multitasking in Arduino
+unsigned long previousTime = millis();
+unsigned long currentTime = 0;
+unsigned long thresholdTime = 1000; 
 
 byte shoes[] = {
   B00000,
@@ -88,6 +101,17 @@ byte celsiusSymbol[] = {
   B00000
  };
 
+byte heartSymbol[] = {
+  B00000,
+  B01010,
+  B10101,
+  B00000,
+  B01010,
+  B00000,
+  B00100,
+  B00000
+ };
+
 void khoiDongLCD()
 {
   lcd.createChar(0, loadingNode);
@@ -125,9 +149,18 @@ void setup()
     Serial.println("Ooops, no ADXL345 detected ... Check your wiring!");
     while(1);
   }
-  /* Set the range to whatever is appropriate for your project */
   accel.setRange(ADXL345_RANGE_16_G);
   
+  // Initialize MAX30102
+  if (!particleSensor.begin(Wire, I2C_SPEED_FAST, 0x57))
+  {
+    Serial.println("MAX30102 was not found. Please check wiring/power. ");
+    while (1);
+  }
+  particleSensor.setup();
+  particleSensor.setPulseAmplitudeRed(0x0A);
+  particleSensor.setPulseAmplitudeGreen(0); 
+
   //start lcd
   lcd.init();
   lcd.backlight();
@@ -136,6 +169,7 @@ void setup()
   lcd.createChar(1, distanceChar);
   lcd.createChar(2, heat);
   lcd.createChar(3, celsiusSymbol);
+  lcd.createChar(4, heartSymbol);
   lcd.clear();
 
   //set input button
@@ -191,35 +225,74 @@ void subScreen()
 
 void loop() 
 {
-  sensors_event_t event; 
-  accel.getEvent(&event);
-  float vector = sqrt((event.acceleration.x*event.acceleration.x) * (event.acceleration.y*event.acceleration.y) * (event.acceleration.z*event.acceleration.z));
-  if(vector > threshold)
+  currentTime = millis();
+  if(currentTime - previousTime >= thresholdTime)
   {
-    steps = steps + 1;
-    distance = distance + 0.3;
-  }
-  
-  temp = dht.readTemperature();
-  if (isnan(temp)) 
-  {
-    Serial.println(F("Failed to read from DHT sensor!"));
+    previousTime = currentTime;
+    sensors_event_t event; 
+    accel.getEvent(&event);
+    float vector = sqrt((event.acceleration.x*event.acceleration.x) * (event.acceleration.y*event.acceleration.y) * (event.acceleration.z*event.acceleration.z));
+    if(vector > threshold)
+    {
+      steps = steps + 1;
+      distance = distance + 0.3;
+    }
+    
+    temp = dht.readTemperature();
+    if (isnan(temp)) 
+    {
+      Serial.println(F("Failed to read from DHT sensor!"));
+    }
+
+    if(digitalRead(button) == HIGH)
+    {
+      choice += 1;
+    }
+
+    if(choice % 2 == 0)
+    {
+      lcd.clear();
+      subScreen();
+    }
+    else
+    {
+      lcd.clear();
+      mainScreen();
+    }
   }
 
-  if(digitalRead(button) == HIGH)
+  //Heartbeat requires rapid reading
+  irValue = particleSensor.getIR();
+  if (checkForBeat(irValue) == true)
   {
-    choice += 1;
-  }
+    //We sensed a beat!
+    long delta = millis() - lastBeat;
+    lastBeat = millis();
 
-  if(choice % 2 == 0)
-  {
-    lcd.clear();
-    subScreen();
+    beatsPerMinute = 60 / (delta / 1000.0);
   }
-  else
+  if(choice % 2 != 0)
   {
-    lcd.clear();
-    mainScreen();
+    lcd.setCursor(7, 1);
+    lcd.write(4);
+    lcd.setCursor(8, 1);
+    lcd.print(":");
+    lcd.setCursor(9, 1);
+    lcd.print(beatsPerMinute);
+    if(beatsPerMinute < 10)
+    {
+      lcd.setCursor(10, 1);
+      lcd.printstr("BPM");
+    }
+    else if(beatsPerMinute >= 10 && beatsPerMinute < 100)
+    {
+      lcd.setCursor(11, 1);
+      lcd.printstr("BPM");
+    }
+    else 
+    {
+      lcd.setCursor(12, 1);
+      lcd.printstr("BPM");
+    }
   }
-  delay(1000);
 }
