@@ -31,8 +31,8 @@ const int utcOffsetInSeconds = 7*60*60;
 NTPClient timeClient(ntpUDP, "pool.ntp.org", utcOffsetInSeconds);
 //WiFiServer server(80);
 AsyncWebServer server(80);
-const char *ssid     = "Thuan";
-const char *password = "0908270035";
+const char *ssid     = "WIFI NAME HERE";
+const char *password = "WIFI PASSWORD HERE";
 String weekDays[7]={"CN.", "Th2", "Th3", "Th4", "Th5", "Th6", "Th7"};
 String date;
 
