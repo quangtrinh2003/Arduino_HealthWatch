@@ -241,7 +241,7 @@ void khoiDongLCD()
   {
     lcd.setCursor(i, 1);
     lcd.write(0);
-    delay(600);
+    delay(300);
   }
   lcd.clear();
 }
