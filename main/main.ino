@@ -1,10 +1,14 @@
 #include <ESP8266WiFi.h>
+#include <Arduino.h>
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 #include <Wire.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_ADXL345_U.h>
 #include <LiquidCrystal_I2C.h>
+#include <Hash.h>
+#include <ESPAsyncTCP.h>
+#include <ESPAsyncWebServer.h>
 #include "DHT.h"
 #include "MAX30105.h"
 #include "heartRate.h"
@@ -25,7 +29,8 @@ int choice = 1;
 WiFiUDP ntpUDP;
 const int utcOffsetInSeconds = 7*60*60;
 NTPClient timeClient(ntpUDP, "pool.ntp.org", utcOffsetInSeconds);
-WiFiServer server(80);
+//WiFiServer server(80);
+AsyncWebServer server(80);
 const char *ssid     = "Thuan";
 const char *password = "0908270035";
 String weekDays[7]={"CN.", "Th2", "Th3", "Th4", "Th5", "Th6", "Th7"};
@@ -112,6 +117,121 @@ byte heartSymbol[] = {
   B00000
  };
 
+const char index_html[] PROGMEM = R"rawliteral(
+<!DOCTYPE HTML><html>
+<head>
+  <meta charset="utf-8" name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet"  href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.0/css/all.min.css">
+  <style>
+    html {
+     font-family: Arial;
+     display: inline-block;
+     margin: 0px auto;
+     text-align: center;
+    }
+    h2 { font-size: 3.0rem; }
+    p { font-size: 3.0rem; }
+    .units { font-size: 1.2rem; }
+    .icon-style{
+      font-size: 1.5rem;
+      vertical-align:middle;
+      padding-bottom: 15px;
+    }
+  </style>
+</head>
+<body>
+  <h2>WEMOS D1 HEALTH WATCH</h2>
+  <p>
+    <i class="fa-sharp fa-solid fa-shoe-prints" style="color:#808080;"></i> 
+    <span class="icon-style">Số bước chân</span> 
+    <span id="steps">%STEPS%</span>
+    <span>bước</span>
+  </p>
+  <p>
+    <i class="fa-solid fa-person-walking"></i> 
+    <span class="icon-style">Quãng đường đi được</span> 
+    <span id="distance">%DISTANCE%</span>
+    <span>m</span>
+  </p>
+  <p>
+    <i class="fa-solid fa-heart-pulse" style="color:#ff0000;"></i>
+    <span class="icon-style">Nhịp tim</span> 
+    <span id="heartbeat">%HEARTBEAT%</span>
+    <span>BPM</span>
+  </p>
+  <p>
+    <i class="fas fa-thermometer-half" style="color:#ff0000;"></i> 
+    <span class="icon-style">Nhiệt độ cơ thể</span> 
+    <span id="temperature">%TEMPERATURE%</span>
+    <sup class="units">&deg;C</sup>
+  </p>
+</body>
+<script>
+setInterval(function ( ) {
+  var xhttp = new XMLHttpRequest();
+  xhttp.onreadystatechange = function() {
+    if (this.readyState == 4 && this.status == 200) {
+      document.getElementById("temperature").innerHTML = this.responseText;
+    }
+  };
+  xhttp.open("GET", "/temperature", true);
+  xhttp.send();
+}, 1000 ) ;
+
+setInterval(function ( ) {
+  var xhttp = new XMLHttpRequest();
+  xhttp.onreadystatechange = function() {
+    if (this.readyState == 4 && this.status == 200) {
+      document.getElementById("steps").innerHTML = this.responseText;
+    }
+  };
+  xhttp.open("GET", "/steps", true);
+  xhttp.send();
+}, 1000 ) ;
+
+setInterval(function ( ) {
+  var xhttp = new XMLHttpRequest();
+  xhttp.onreadystatechange = function() {
+    if (this.readyState == 4 && this.status == 200) {
+      document.getElementById("heartbeat").innerHTML = this.responseText;
+    }
+  };
+  xhttp.open("GET", "/heartbeat", true);
+  xhttp.send();
+}, 1000 ) ;
+
+setInterval(function ( ) {
+  var xhttp = new XMLHttpRequest();
+  xhttp.onreadystatechange = function() {
+    if (this.readyState == 4 && this.status == 200) {
+      document.getElementById("distance").innerHTML = this.responseText;
+    }
+  };
+  xhttp.open("GET", "/distance", true);
+  xhttp.send();
+}, 1000 ) ;
+
+</script>
+</html>)rawliteral";
+
+// Replaces placeholder with DHT values
+String processor(const String& var){
+  //Serial.println(var);
+  if(var == "TEMPERATURE"){
+    return String(temp);
+  }
+  else if(var == "STEPS"){
+    return String(steps);
+  }
+  else if(var == "HEARTBEAT"){
+    return String(beatsPerMinute);
+  }
+  else if(var == "DISTANCE"){
+    return String(distance);
+  }
+  return String();
+}
+
 void khoiDongLCD()
 {
   lcd.createChar(0, loadingNode);
@@ -139,6 +259,23 @@ void setup()
     delay(500);
     Serial.print(".");
   }
+
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send_P(200, "text/html", index_html, processor);
+  });
+  server.on("/temperature", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send_P(200, "text/plain", String(temp).c_str());
+  });
+  server.on("/steps", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send_P(200, "text/plain", String(steps).c_str());
+  });
+  server.on("/heartbeat", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send_P(200, "text/plain", String(beatsPerMinute).c_str());
+  });
+  server.on("/distance", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send_P(200, "text/plain", String(distance).c_str());
+  });
+
   server.begin();
   timeClient.begin();
 
@@ -283,6 +420,11 @@ void loop()
       lcd.print(0);
       lcd.setCursor(10, 1);
       lcd.printstr("BPM");
+      for(int i = 13; i <= 15; i++)
+      {
+        lcd.setCursor(i, 1);
+        lcd.print(" ");
+      }
     }
     else 
     {
